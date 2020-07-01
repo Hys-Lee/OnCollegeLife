@@ -1,0 +1,988 @@
+Microsoft (R) Macro Assembler Version 14.22.27905.0	    06/13/20 16:54:28
+Project1.asm						     Page 1 - 1
+
+
+				;;exe로 바꾸고 파일명을 "mypaint"로 바꾸기
+
+
+
+				include irvine32.inc
+			      C ; Include file for Irvine32.lib             (Irvine32.inc)
+			      C 
+			      C ;OPTION CASEMAP:NONE		; optional: make identifiers case-sensitive
+			      C 
+			      C INCLUDE SmallWin.inc		; MS-Windows prototypes, structures, and constants
+			      C .NOLIST
+			      C .LIST
+			      C 
+			      C INCLUDE VirtualKeys.inc
+			      C ; VirtualKeys.inc
+			      C .NOLIST
+			      C .LIST
+			      C 
+			      C 
+			      C .NOLIST
+			      C .LIST
+			      C 
+
+				distr proto  sl:byte, endpoint:byte
+				dfs proto loc:word, oric:byte, dfscolor:byte
+				paint proto locat:word, paintcolor:byte
+
+ 00000000			.data
+ 00000000  00000081 [		input byte 129 dup(0)              ;input값
+	    00
+	   ]
+ 00000081  00000014 [		source byte 20 dup(0)                  ;초기값이 0이니까 "~~",0 이되지   ;input의 source img file
+	    00
+	   ]
+ 00000095  00000014 [		output byte 20 dup(0)                                        ;input의 output img file
+	    00
+	   ]
+ 000000A9  00000002 [		xval byte 2 dup(0)                                                                      ;input의 x값->채우기시작x값
+	    00
+	   ]
+ 000000AB  00000002 [		yval byte 2 dup(0)                        ;;3100 if y가 1이면                                                       ;input의 y값->채우기시작y값
+	    00
+	   ]
+ 000000AD 00			color byte 	0;input의 color 
+
+
+ 000000AE 00000000		filehandle dword ?
+
+ 000000B2  00000007 [		firstrow byte 7 dup(0) ; 첫 줄
+	    00
+	   ]
+ 000000B9 00000007		frbufsize dword ($-firstrow)
+
+ 000000BD  00000032 [		mapsbuffer byte 50 dup(52 dup(0)) ;50*(50+2)=2607 ->줄 마지막에 0dh,0ah
+	    00000034 [
+	     00
+	    ]
+	   ]
+ 00000AE5 00000A28		mapbufsize dword ($-mapsbuffer)
+ 00000AE9 00000000		bytecount dword ?
+ 00000AED 00000000		byteswritten dword ?
+
+ 00000AF1 00			intx byte ?
+ 00000AF2 00			inty byte ?
+
+ 00000AF3 0000			xyloc word 0 ;xy처음위치를 maps에 맞게변환해서 
+ 00000AF5 00			xyoric byte 0 ; 맨 처음 색->"문자"임(숫자가 아니라)
+
+ 00000AF6  00000032 [		visitedmap byte 50 dup(52 dup(0)) ;;;;;;;방문했으면 0->1
+	    00000034 [
+	     00
+	    ]
+	   ]
+
+ 00000000			.code
+
+ 00000000			main proc
+ 00000000  BA 00000000 R		mov edx, offset input  ;;input값 분산완료될 때까지 절대 건들면 안됨
+ 00000005  E8 00000000 E		call getcommandtail
+ 0000000A  83 C2 01			add edx,1;;;;;;;;;앞의 필요없는부분 빼고
+					;;;input값을 요소별로 분산시켜 저장함
+ 0000000D  BB 00000081 R		mov ebx,offset source
+					invoke distr, lengthof source, 20h;;인출할거 최대크기(반복횟수), 중단점, 여기에  ecx가 들어가야지 이 두 register는 보존 안함
+ 00000012  6A 20	   *	    push   +000000020h
+ 00000014  6A 14	   *	    push   +000000014h
+ 00000016  E8 00000202	   *	    call   distr
+ 0000001B  BB 00000095 R		mov ebx, offset output
+					invoke distr, lengthof output, 20h
+ 00000020  6A 20	   *	    push   +000000020h
+ 00000022  6A 14	   *	    push   +000000014h
+ 00000024  E8 000001F4	   *	    call   distr
+ 00000029  BB 000000A9 R		mov ebx, offset xval
+					invoke distr, lengthof xval, 20h
+ 0000002E  6A 20	   *	    push   +000000020h
+ 00000030  6A 02	   *	    push   +000000002h
+ 00000032  E8 000001E6	   *	    call   distr
+ 00000037  BB 000000AB R		mov ebx, offset yval
+					invoke distr, lengthof yval, 20h
+ 0000003C  6A 20	   *	    push   +000000020h
+ 0000003E  6A 02	   *	    push   +000000002h
+ 00000040  E8 000001D8	   *	    call   distr
+ 00000045  BB 000000AD R		mov ebx, offset color
+					invoke distr, lengthof color, 0h
+ 0000004A  6A 00	   *	    push   +000000000h
+ 0000004C  6A 01	   *	    push   +000000001h
+ 0000004E  E8 000001CA	   *	    call   distr
+
+					
+
+					;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;다 distribute했으니 파일 불러와야지->source,output은 변환시킬필요 없나? 
+					
+					invoke createfile,
+							addr source, generic_read,
+							do_not_share, null, open_existing,
+							file_attribute_normal,0
+ 00000053  6A 00	   *	    push   +000000000h
+ 00000055  68 00000080	   *	    push   +000000080h
+ 0000005A  6A 03	   *	    push   +000000003h
+ 0000005C  6A 00	   *	    push   +000000000h
+ 0000005E  6A 00	   *	    push   +000000000h
+ 00000060  68 80000000	   *	    push   +080000000h
+ 00000065  68 00000081 R   *	    push   OFFSET source
+ 0000006A  E8 00000000 E   *	    call   CreateFileA
+ 0000006F  A3 000000AE R		mov filehandle, eax
+					invoke readfile,
+							filehandle, addr firstrow,
+							frbufsize, addr bytecount,0
+ 00000074  6A 00	   *	    push   +000000000h
+ 00000076  68 00000AE9 R   *	    push   OFFSET bytecount
+ 0000007B  FF 35 000000B9 R *	    push   frbufsize
+ 00000081  68 000000B2 R   *	    push   OFFSET firstrow
+ 00000086  FF 35 000000AE R *	    push   filehandle
+ 0000008C  E8 00000000 E   *	    call   ReadFile
+					invoke readfile,
+							filehandle, addr mapsbuffer,
+							mapbufsize, addr bytecount, 0
+ 00000091  6A 00	   *	    push   +000000000h
+ 00000093  68 00000AE9 R   *	    push   OFFSET bytecount
+ 00000098  FF 35 00000AE5 R *	    push   mapbufsize
+ 0000009E  68 000000BD R   *	    push   OFFSET mapsbuffer
+ 000000A3  FF 35 000000AE R *	    push   filehandle
+ 000000A9  E8 00000000 E   *	    call   ReadFile
+					invoke closehandle,
+							filehandle
+ 000000AE  FF 35 000000AE R *	    push   filehandle
+ 000000B4  E8 00000000 E   *	    call   CloseHandle
+
+
+
+					
+
+
+					;;;;;;xval,yval,color은 아스키코드로->문자or숫자로 변환해야함 color은 0~7 x,y는 0~49  
+					;;30h~39h가 0~9임
+					;;xval,yval은 두번째자리가 0h면 한자리수, 아니면 두자리수('01'로 입력해도 상관없징)
+					;;;;;;;;;;xval대해
+ 000000B9  B0 00			mov al, 0h
+ 000000BB  3A 05 000000AA R		cmp al, xval[1]
+ 000000C1  74 02			je xones
+ 000000C3  EB 14			jmp xtens
+ 000000C5			xones:
+ 000000C5  B0 30			mov al, 30h
+ 000000C7  28 05 000000A9 R		sub xval[0], al ;;;이러면 0~9가 나오징
+ 000000CD  A0 000000A9 R		mov al, xval[0]
+ 000000D2  A2 00000AF1 R		mov intx,al
+ 000000D7  EB 33			jmp abouty
+ 000000D9			xtens:
+ 000000D9  B0 30			mov al,30h
+ 000000DB  28 05 000000AA R		sub xval[1],al
+ 000000E1  28 05 000000A9 R		sub xval[0],al
+ 000000E7  A0 000000A9 R		mov al, xval[0]
+ 000000EC  B4 00			mov ah,0
+ 000000EE  66| 0F B6 1D			movzx bx,xval[1]
+	   000000AA R
+ 000000F6  B9 0000000A			mov ecx,10
+ 000000FB  F7 E1			mul ecx
+ 000000FD  66| 03 C3			add ax,bx
+ 00000100  A2 00000AF1 R		mov intx, al
+ 00000105  A0 00000AF1 R		mov al, intx
+ 0000010A  EB 00			jmp abouty
+
+ 0000010C			abouty:
+				;;;;;;;;;;;;;;;;;;yval대해
+ 0000010C  B0 00			mov al, 0h
+ 0000010E  3A 05 000000AC R		cmp al, yval[1]
+ 00000114  74 02			je yones
+ 00000116  EB 14			jmp ytens
+ 00000118			yones:
+ 00000118  B0 30			mov al, 30h
+ 0000011A  28 05 000000AB R		sub yval[0], al ;;;이러면 0~9가 나오징
+ 00000120  A0 000000AB R		mov al, yval[0]
+ 00000125  A2 00000AF2 R		mov inty,al
+ 0000012A  EB 2E			jmp aboutmaps
+ 0000012C			ytens:
+ 0000012C  B0 30			mov al,30h
+ 0000012E  28 05 000000AC R		sub yval[1],al
+ 00000134  28 05 000000AB R		sub yval[0],al
+ 0000013A  A0 000000AB R		mov al, yval[0]
+ 0000013F  B4 00			mov ah,0
+ 00000141  66| 0F B6 1D			movzx bx,yval[1]
+	   000000AC R
+ 00000149  B9 0000000A			mov ecx,10
+ 0000014E  F7 E1			mul ecx
+ 00000150  66| 03 C3			add ax,bx
+ 00000153  A2 00000AF2 R		mov inty, al
+ 00000158  EB 00			jmp aboutmaps
+
+
+ 0000015A			aboutmaps:
+					;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 이제 (x,y)로가서 값 바꾸고 같은 영역 인지해야함 
+					;;mapsbuffer는 한줄에 52개, 마지가 두개(0dh,0ah 순서이대로임)는 줄바꾸기용 기억=>위:-=52, 아래:+=52, 왼:-=1, 오:+=1
+					;;(x,y)는 mapsbuffer에서 x+(52*y)위치임  단위는 word로 고려
+ 0000015A  66| B8 0000			mov ax,0
+ 0000015E  A0 00000AF2 R		mov al, inty 
+ 00000163  B3 34			mov bl,52
+ 00000165  F6 E3			mul bl
+ 00000167  66| 0F B6 1D			movzx bx,intx
+	   00000AF1 R
+ 0000016F  66| 03 C3			add ax,bx
+ 00000172  66| A3			mov xyloc,ax
+	   00000AF3 R
+					
+					;;;;;;;;;;;;xyloc구했음 
+ 00000178  0F B7 05			movzx eax,xyloc
+	   00000AF3 R
+ 0000017F  8A 98 000000BD R		mov bl, mapsbuffer[eax]
+ 00000185  88 1D 00000AF5 R		mov xyoric, bl
+					;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;xyoric구했음 ->아스키코드 즉, 문자임
+					
+
+
+ 0000018B  BB 000000BD R		mov ebx, offset mapsbuffer ;;;;;;;;;;;;;;;색칠하는동안 ebx건들지 말기
+ 00000190  BA 00000AF6 R		mov edx, offset visitedmap ;;;;;;;;;;;;;;;색칠하는동안 edx건들지 말기
+					
+					;;(29,8)이면 29+52*8=445
+					
+
+					invoke dfs, xyloc, xyoric, color
+ 00000195  A0 000000AD R   *	    mov    al, color
+ 0000019A  50		   *	    push   eax
+ 0000019B  A0 00000AF5 R   *	    mov    al, xyoric
+ 000001A0  50		   *	    push   eax
+ 000001A1  83 EC 02	   *	    sub    esp, 002h
+ 000001A4  66| FF 35
+	   00000AF3 R	   *	    push   xyloc
+ 000001AB  E8 0000008E	   *	    call   dfs
+					
+
+
+
+
+
+
+
+					invoke createfile,
+							addr output, generic_write,
+							do_not_share, null, create_always, 
+							file_attribute_normal, 0
+ 000001B0  6A 00	   *	    push   +000000000h
+ 000001B2  68 00000080	   *	    push   +000000080h
+ 000001B7  6A 02	   *	    push   +000000002h
+ 000001B9  6A 00	   *	    push   +000000000h
+ 000001BB  6A 00	   *	    push   +000000000h
+ 000001BD  68 40000000	   *	    push   +040000000h
+ 000001C2  68 00000095 R   *	    push   OFFSET output
+ 000001C7  E8 00000000 E   *	    call   CreateFileA
+ 000001CC  A3 000000AE R		mov filehandle, eax
+					invoke writefile,
+							filehandle, addr firstrow,
+							frbufsize, addr byteswritten,0
+ 000001D1  6A 00	   *	    push   +000000000h
+ 000001D3  68 00000AED R   *	    push   OFFSET byteswritten
+ 000001D8  FF 35 000000B9 R *	    push   frbufsize
+ 000001DE  68 000000B2 R   *	    push   OFFSET firstrow
+ 000001E3  FF 35 000000AE R *	    push   filehandle
+ 000001E9  E8 00000000 E   *	    call   WriteFile
+					invoke writefile,
+							filehandle, addr mapsbuffer,
+							mapbufsize, addr byteswritten,0
+ 000001EE  6A 00	   *	    push   +000000000h
+ 000001F0  68 00000AED R   *	    push   OFFSET byteswritten
+ 000001F5  FF 35 00000AE5 R *	    push   mapbufsize
+ 000001FB  68 000000BD R   *	    push   OFFSET mapsbuffer
+ 00000200  FF 35 000000AE R *	    push   filehandle
+ 00000206  E8 00000000 E   *	    call   WriteFile
+					invoke closehandle,
+							filehandle
+ 0000020B  FF 35 000000AE R *	    push   filehandle
+ 00000211  E8 00000000 E   *	    call   CloseHandle
+
+					exit
+ 00000216  6A 00	   *	    push   +000000000h
+ 00000218  E8 00000000 E   *	    call   ExitProcess
+ 0000021D			main endp
+
+
+				;; loop통해 중단점기준으로 나눠서 필요한 인수들 저장시키기 
+				;;sl은 반복가능횟수 max, endpoint는 중단점
+ 0000021D			distr proc sl:byte, endpoint:byte ;;edx는 input의 주소, ebx는 source의 주소 
+ 0000021D  55		   *	    push   ebp
+ 0000021E  8B EC	   *	    mov    ebp, esp
+ 00000220  55				push ebp
+ 00000221  8B F5			mov esi,ebp
+ 00000223  51				push ecx
+ 00000224  0F B6 4D 08			movzx ecx, sl ;;일단 반복가능횟수max
+ 00000228			dL1:	
+ 00000228  8A 02			mov al, [edx] ;;source에 input element채우기
+ 0000022A  88 03			mov [ebx],al
+
+ 0000022C  42				inc edx
+ 0000022D  43				inc ebx
+ 0000022E  8A 45 0C			mov al, endpoint ;;다음 element가 중단점인지 체크
+ 00000231  38 02			cmp [edx], al
+ 00000233  74 02			je quit
+ 00000235  E2 F1			loop dL1
+
+ 00000237			quit:
+ 00000237  42				inc edx
+ 00000238  59				pop ecx
+ 00000239  5D				pop ebp
+ 0000023A  C9		   *	    leave  
+ 0000023B  C2 0008			ret 8
+ 0000023E			distr endp
+
+				;;;;;;;;;;;;;;;;;;;;depth first search방법으로 인접한 같은 영역에 색칠하기
+				;;;;;loc은 현재 위치, oric은 input으로 들어온 위치의 색, dfscolor은 색칠할 색, 
+ 0000023E			dfs proc loc:word, oric:byte, dfscolor:byte ; ebx는 map, edx는 visited
+					local wayr:word, wayl:word, wayu:word, wayd :word ;;;사방중 하나로 이동한 위치
+					;;;;;;;;;;;일단 지역변수로 xyloc의 사방을 넣고 보는겨-> 위의 local 변수들은 (사방중 하나로)이동한 위치
+ 0000023E  55		   *	    push   ebp
+ 0000023F  8B EC	   *	    mov    ebp, esp
+ 00000241  83 C4 F8	   *	    add    esp, 0FFFFFFF8h
+ 00000244  66| 8B 45 08			mov ax, loc
+ 00000248  66| 89 45 FE			mov wayr, ax
+ 0000024C  66| FF 45 FE			inc wayr
+ 00000250  66| 89 45 FC			mov wayl,ax
+ 00000254  66| FF 4D FC			dec wayl
+ 00000258  66| 89 45 FA			mov wayu,ax
+ 0000025C  66| 83 6D FA			sub wayu,52
+	   34
+ 00000261  66| 89 45 F8			mov wayd,ax
+ 00000265  66| 83 45 F8			add wayd,52
+	   34
+
+
+					invoke paint, loc, dfscolor  ;;ebx는 map, edx는 visited  =>색칠하기 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;loc가 이상하게 높게 나오는데
+ 0000026A  8A 45 10	   *	    mov    al, byte  ptr ss:[ebp]+010h
+ 0000026D  50		   *	    push   eax
+ 0000026E  83 EC 02	   *	    sub    esp, 002h
+ 00000271  66| FF 75 08	   *	    push   word  ptr ss:[ebp]+00008h
+ 00000275  E8 00000108	   *	    call   paint
+					
+					;;오른쪽부터 시계반대방향 순으로 => xyloc에서: +1-> -52 -> -1 -> +52
+					;;경계나 다른영역은 아닌지 체크 그리고 방문여부도 체크
+ 0000027A			probr:
+ 0000027A  66| B8 0000			mov ax,0
+ 0000027E  66| 39 45 FE			cmp wayr, ax   ;;locarr[ecx]는 사방중 하나로 이동한 위치
+ 00000282  7C 37			jl probu
+					;;;통과->맨 윗줄은 아니지
+ 00000284  66| B8 0A28			mov ax,2600
+ 00000288  66| 39 45 FE			cmp wayr,ax
+ 0000028C  7F 2D			jg probu
+					;;;통과->맨 아랫줄은 아니지
+ 0000028E  0F B7 45 FE			movzx eax,wayr
+ 00000292  8A 4D 0C			mov cl, oric
+ 00000295  03 C3			add eax,ebx
+ 00000297  38 08			cmp [eax],cl
+ 00000299  75 20			jne probu
+					;;;통과->다른영역은 아니지
+ 0000029B  0F B7 45 FE			movzx eax,wayr
+ 0000029F  03 C2			add eax,edx
+ 000002A1  B1 00			mov cl,0
+ 000002A3  38 08			cmp [eax],cl
+ 000002A5  75 14			jne probu
+					;;;통과->첫 방문이지
+					invoke dfs, wayr, oric, dfscolor
+ 000002A7  8A 45 10	   *	    mov    al, byte  ptr ss:[ebp]+010h
+ 000002AA  50		   *	    push   eax
+ 000002AB  8A 45 0C	   *	    mov    al, byte  ptr ss:[ebp]+00Ch
+ 000002AE  50		   *	    push   eax
+ 000002AF  83 EC 02	   *	    sub    esp, 002h
+ 000002B2  66| FF 75 FE	   *	    push   word  ptr ss:[ebp]+0FFFEh
+ 000002B6  E8 FFFFFF83	   *	    call   dfs
+ 000002BB			probu:
+ 000002BB  66| B8 0000			mov ax,0
+ 000002BF  66| 39 45 FA			cmp wayu, ax   ;;locarr[ecx]는 사방중 하나로 이동한 위치
+ 000002C3  7C 37			jl probl
+					;;;통과->맨 윗줄은 아니지
+ 000002C5  66| B8 0A28			mov ax,2600
+ 000002C9  66| 39 45 FA			cmp wayu,ax
+ 000002CD  7F 2D			jg probl
+					;;;통과->맨 아랫줄은 아니지
+ 000002CF  0F B7 45 FA			movzx eax,wayu
+ 000002D3  8A 4D 0C			mov cl, oric
+ 000002D6  03 C3			add eax,ebx
+ 000002D8  38 08			cmp [eax],cl
+ 000002DA  75 20			jne probl
+					;;;통과->다른영역은 아니지
+ 000002DC  0F B7 45 FA			movzx eax,wayu
+ 000002E0  03 C2			add eax,edx
+ 000002E2  B1 00			mov cl,0
+ 000002E4  38 08			cmp [eax],cl
+ 000002E6  75 14			jne probl
+					;;;통과->첫 방문이지
+					invoke dfs, wayu, oric, dfscolor
+ 000002E8  8A 45 10	   *	    mov    al, byte  ptr ss:[ebp]+010h
+ 000002EB  50		   *	    push   eax
+ 000002EC  8A 45 0C	   *	    mov    al, byte  ptr ss:[ebp]+00Ch
+ 000002EF  50		   *	    push   eax
+ 000002F0  83 EC 02	   *	    sub    esp, 002h
+ 000002F3  66| FF 75 FA	   *	    push   word  ptr ss:[ebp]+0FFFAh
+ 000002F7  E8 FFFFFF42	   *	    call   dfs
+ 000002FC			probl:
+ 000002FC  66| B8 0000			mov ax,0
+ 00000300  66| 39 45 FC			cmp wayl, ax   ;;locarr[ecx]는 사방중 하나로 이동한 위치
+ 00000304  7C 37			jl probd
+					;;;통과->맨 윗줄은 아니지
+ 00000306  66| B8 0A28			mov ax,2600
+ 0000030A  66| 39 45 FC			cmp wayl,ax
+ 0000030E  7F 2D			jg probd
+					;;;통과->맨 아랫줄은 아니지
+ 00000310  0F B7 45 FC			movzx eax,wayl
+ 00000314  8A 4D 0C			mov cl, oric
+ 00000317  03 C3			add eax,ebx
+ 00000319  38 08			cmp [eax],cl
+ 0000031B  75 20			jne probd
+					;;;통과->다른영역은 아니지
+ 0000031D  0F B7 45 FC			movzx eax,wayl
+ 00000321  03 C2			add eax,edx
+ 00000323  B1 00			mov cl,0
+ 00000325  38 08			cmp [eax],cl
+ 00000327  75 14			jne probd
+					;;;통과->첫 방문이지
+					invoke dfs, wayl, oric, dfscolor
+ 00000329  8A 45 10	   *	    mov    al, byte  ptr ss:[ebp]+010h
+ 0000032C  50		   *	    push   eax
+ 0000032D  8A 45 0C	   *	    mov    al, byte  ptr ss:[ebp]+00Ch
+ 00000330  50		   *	    push   eax
+ 00000331  83 EC 02	   *	    sub    esp, 002h
+ 00000334  66| FF 75 FC	   *	    push   word  ptr ss:[ebp]+0FFFCh
+ 00000338  E8 FFFFFF01	   *	    call   dfs
+ 0000033D			probd:
+ 0000033D  66| B8 0000			mov ax,0
+ 00000341  66| 39 45 F8			cmp wayd, ax   ;;locarr[ecx]는 사방중 하나로 이동한 위치
+ 00000345  7C 37			jl dfsret
+					;;;통과->맨 윗줄은 아니지
+ 00000347  66| B8 0A28			mov ax,2600
+ 0000034B  66| 39 45 F8			cmp wayd,ax
+ 0000034F  7F 2D			jg dfsret
+					;;;통과->맨 아랫줄은 아니지
+ 00000351  0F B7 45 F8			movzx eax,wayd
+ 00000355  8A 4D 0C			mov cl, oric
+ 00000358  03 C3			add eax,ebx
+ 0000035A  38 08			cmp [eax],cl
+ 0000035C  75 20			jne dfsret
+					;;;통과->다른영역은 아니지
+ 0000035E  0F B7 45 F8			movzx eax,wayd
+ 00000362  03 C2			add eax,edx
+ 00000364  B1 00			mov cl,0
+ 00000366  38 08			cmp [eax],cl
+ 00000368  75 14			jne dfsret
+					;;;통과->첫 방문이지
+					invoke dfs, wayd, oric, dfscolor
+ 0000036A  8A 45 10	   *	    mov    al, byte  ptr ss:[ebp]+010h
+ 0000036D  50		   *	    push   eax
+ 0000036E  8A 45 0C	   *	    mov    al, byte  ptr ss:[ebp]+00Ch
+ 00000371  50		   *	    push   eax
+ 00000372  83 EC 02	   *	    sub    esp, 002h
+ 00000375  66| FF 75 F8	   *	    push   word  ptr ss:[ebp]+0FFF8h
+ 00000379  E8 FFFFFEC0	   *	    call   dfs
+
+ 0000037E			dfsret:
+					ret
+ 0000037E  C9		   *	    leave  
+ 0000037F  C2 000C	   *	    ret    0000Ch
+ 00000382			dfs endp
+
+				;;;색칠하기 locat은 색칠할 위치, dfs는 색칠할 색
+ 00000382			paint proc locat:word, dfscolor:byte ;;ebx는 map, edx는 visited
+ 00000382  55		   *	    push   ebp
+ 00000383  8B EC	   *	    mov    ebp, esp
+ 00000385  0F B7 45 08			movzx eax,locat;
+ 00000389  03 C2			add eax,edx
+ 0000038B  B1 01			mov cl,1
+ 0000038D  88 08			mov [eax],cl ;;방문함
+
+ 0000038F  0F B7 45 08			movzx eax,locat
+ 00000393  03 C3			add eax,ebx
+ 00000395  8A 4D 0C			mov cl,dfscolor
+ 00000398  88 08			mov [eax],cl ;;색칠함
+
+					ret
+ 0000039A  C9		   *	    leave  
+ 0000039B  C2 0008	   *	    ret    00008h
+ 0000039E			paint endp
+
+				end main
+Microsoft (R) Macro Assembler Version 14.22.27905.0	    06/13/20 16:54:28
+Project1.asm						     Symbols 2 - 1
+
+
+
+
+Structures and Unions:
+
+                N a m e                  Size
+                                         Offset      Type
+
+CONSOLE_CURSOR_INFO  . . . . . .	 00000008
+  dwSize . . . . . . . . . . . .	 00000000	 DWord
+  bVisible . . . . . . . . . . .	 00000004	 DWord
+CONSOLE_SCREEN_BUFFER_INFO . . .	 00000016
+  dwSize . . . . . . . . . . . .	 00000000	 DWord
+  dwCursorPosition . . . . . . .	 00000004	 DWord
+  wAttributes  . . . . . . . . .	 00000008	 Word
+  srWindow . . . . . . . . . . .	 0000000A	 QWord
+  dwMaximumWindowSize  . . . . .	 00000012	 DWord
+COORD  . . . . . . . . . . . . .	 00000004
+  X  . . . . . . . . . . . . . .	 00000000	 Word
+  Y  . . . . . . . . . . . . . .	 00000002	 Word
+FILETIME . . . . . . . . . . . .	 00000008
+  loDateTime . . . . . . . . . .	 00000000	 DWord
+  hiDateTime . . . . . . . . . .	 00000004	 DWord
+FOCUS_EVENT_RECORD . . . . . . .	 00000004
+  bSetFocus  . . . . . . . . . .	 00000000	 DWord
+FPU_ENVIRON  . . . . . . . . . .	 0000001C
+  controlWord  . . . . . . . . .	 00000000	 Word
+  statusWord . . . . . . . . . .	 00000004	 Word
+  tagWord  . . . . . . . . . . .	 00000008	 Word
+  instrPointerOffset . . . . . .	 0000000C	 DWord
+  instrPointerSelector . . . . .	 00000010	 DWord
+  operandPointerOffset . . . . .	 00000014	 DWord
+  operandPointerSelector . . . .	 00000018	 Word
+INPUT_RECORD . . . . . . . . . .	 00000014
+  EventType  . . . . . . . . . .	 00000000	 Word
+  Event  . . . . . . . . . . . .	 00000004	 XmmWord
+  bKeyDown . . . . . . . . . . .	 00000000	 DWord
+  wRepeatCount . . . . . . . . .	 00000004	 Word
+  wVirtualKeyCode  . . . . . . .	 00000006	 Word
+  wVirtualScanCode . . . . . . .	 00000008	 Word
+  uChar  . . . . . . . . . . . .	 0000000A	 Word
+  UnicodeChar  . . . . . . . . .	 00000000	 Word
+  AsciiChar  . . . . . . . . . .	 00000000	 Byte
+  dwControlKeyState  . . . . . .	 0000000C	 DWord
+  dwMousePosition  . . . . . . .	 00000000	 DWord
+  dwButtonState  . . . . . . . .	 00000004	 DWord
+  dwMouseControlKeyState . . . .	 00000008	 DWord
+  dwEventFlags . . . . . . . . .	 0000000C	 DWord
+  dwSize . . . . . . . . . . . .	 00000000	 DWord
+  dwCommandId  . . . . . . . . .	 00000000	 DWord
+  bSetFocus  . . . . . . . . . .	 00000000	 DWord
+KEY_EVENT_RECORD . . . . . . . .	 00000010
+  bKeyDown . . . . . . . . . . .	 00000000	 DWord
+  wRepeatCount . . . . . . . . .	 00000004	 Word
+  wVirtualKeyCode  . . . . . . .	 00000006	 Word
+  wVirtualScanCode . . . . . . .	 00000008	 Word
+  uChar  . . . . . . . . . . . .	 0000000A	 Word
+  UnicodeChar  . . . . . . . . .	 00000000	 Word
+  AsciiChar  . . . . . . . . . .	 00000000	 Byte
+  dwControlKeyState  . . . . . .	 0000000C	 DWord
+MENU_EVENT_RECORD  . . . . . . .	 00000004
+  dwCommandId  . . . . . . . . .	 00000000	 DWord
+MOUSE_EVENT_RECORD . . . . . . .	 00000010
+  dwMousePosition  . . . . . . .	 00000000	 DWord
+  dwButtonState  . . . . . . . .	 00000004	 DWord
+  dwMouseControlKeyState . . . .	 00000008	 DWord
+  dwEventFlags . . . . . . . . .	 0000000C	 DWord
+SMALL_RECT . . . . . . . . . . .	 00000008
+  Left . . . . . . . . . . . . .	 00000000	 Word
+  Top  . . . . . . . . . . . . .	 00000002	 Word
+  Right  . . . . . . . . . . . .	 00000004	 Word
+  Bottom . . . . . . . . . . . .	 00000006	 Word
+SYSTEMTIME . . . . . . . . . . .	 00000010
+  wYear  . . . . . . . . . . . .	 00000000	 Word
+  wMonth . . . . . . . . . . . .	 00000002	 Word
+  wDayOfWeek . . . . . . . . . .	 00000004	 Word
+  wDay . . . . . . . . . . . . .	 00000006	 Word
+  wHour  . . . . . . . . . . . .	 00000008	 Word
+  wMinute  . . . . . . . . . . .	 0000000A	 Word
+  wSecond  . . . . . . . . . . .	 0000000C	 Word
+  wMilliseconds  . . . . . . . .	 0000000E	 Word
+WINDOW_BUFFER_SIZE_RECORD  . . .	 00000004
+  dwSize . . . . . . . . . . . .	 00000000	 DWord
+
+
+Segments and Groups:
+
+                N a m e                 Size     Length   Align   Combine Class
+
+FLAT . . . . . . . . . . . . . .	GROUP
+STACK  . . . . . . . . . . . . .	32 Bit	 00001000 Para	  Stack	  'STACK'	 
+_DATA  . . . . . . . . . . . . .	32 Bit	 0000151E Para	  Public  'DATA'	
+_TEXT  . . . . . . . . . . . . .	32 Bit	 0000039E Para	  Public  'CODE'	
+
+
+Procedures, parameters, and locals:
+
+                N a m e                 Type     Value    Attr
+
+CloseFile  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+CloseHandle  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Clrscr . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+CreateFileA  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+CreateOutputFile . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Crlf . . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Delay  . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+DumpMem  . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+DumpRegs . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ExitProcess  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+FileTimeToDosDateTime  . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+FileTimeToSystemTime . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+FlushConsoleInputBuffer  . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+FormatMessageA . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetCommandLineA  . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetCommandTail . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetConsoleCP . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetConsoleCursorInfo . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetConsoleMode . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetConsoleScreenBufferInfo . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetDateTime  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetFileTime  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetKeyState  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetLastError . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetLocalTime . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetMaxXY . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetMseconds  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetNumberOfConsoleInputEvents  .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetProcessHeap . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetStdHandle . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetSystemTime  . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetTextColor . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+GetTickCount . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Gotoxy . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+HeapAlloc  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+HeapCreate . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+HeapDestroy  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+HeapFree . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+HeapSize . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+IsDigit  . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+LocalFree  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+MessageBoxA  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+MsgBoxAsk  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+MsgBox . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+OpenInputFile  . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ParseDecimal32 . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ParseInteger32 . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+PeekConsoleInputA  . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Random32 . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+RandomRange  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Randomize  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadChar . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadConsoleA . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadConsoleInputA  . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadDec  . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadFile . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadFloat  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadFromFile . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadHex  . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadInt  . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadKeyFlush . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadKey  . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ReadString . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetConsoleCursorInfo . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetConsoleCursorPosition . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetConsoleMode . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetConsoleScreenBufferSize . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetConsoleTextAttribute  . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetConsoleTitleA . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetConsoleWindowInfo . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetFilePointer . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetLocalTime . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SetTextColor . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+ShowFPUStack . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Sleep  . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+StrLength  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Str_compare  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Str_copy . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Str_length . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Str_trim . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+Str_ucase  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+SystemTimeToFileTime . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WaitMsg  . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteBinB  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteBin . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteChar  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteConsoleA  . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteConsoleOutputAttribute  . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteConsoleOutputCharacterA . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteDec . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteFile  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteFloat . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteHexB  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteHex . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteInt . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteStackFrameName  . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteStackFrame  . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteString  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteToFile  . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+WriteWindowsMsg  . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External STDCALL
+dfs  . . . . . . . . . . . . . .	P Near	 0000023E _TEXT	Length= 00000144 Public STDCALL
+  loc  . . . . . . . . . . . . .	Word	 bp + 00000008
+  oric . . . . . . . . . . . . .	Byte	 bp + 0000000C
+  dfscolor . . . . . . . . . . .	Byte	 bp + 00000010
+  wayr . . . . . . . . . . . . .	Word	 bp - 00000002
+  wayl . . . . . . . . . . . . .	Word	 bp - 00000004
+  wayu . . . . . . . . . . . . .	Word	 bp - 00000006
+  wayd . . . . . . . . . . . . .	Word	 bp - 00000008
+  probr  . . . . . . . . . . . .	L Near	 0000027A _TEXT	
+  probu  . . . . . . . . . . . .	L Near	 000002BB _TEXT	
+  probl  . . . . . . . . . . . .	L Near	 000002FC _TEXT	
+  probd  . . . . . . . . . . . .	L Near	 0000033D _TEXT	
+  dfsret . . . . . . . . . . . .	L Near	 0000037E _TEXT	
+distr  . . . . . . . . . . . . .	P Near	 0000021D _TEXT	Length= 00000021 Public STDCALL
+  sl . . . . . . . . . . . . . .	Byte	 bp + 00000008
+  endpoint . . . . . . . . . . .	Byte	 bp + 0000000C
+  dL1  . . . . . . . . . . . . .	L Near	 00000228 _TEXT	
+  quit . . . . . . . . . . . . .	L Near	 00000237 _TEXT	
+main . . . . . . . . . . . . . .	P Near	 00000000 _TEXT	Length= 0000021D Public STDCALL
+  xones  . . . . . . . . . . . .	L Near	 000000C5 _TEXT	
+  xtens  . . . . . . . . . . . .	L Near	 000000D9 _TEXT	
+  abouty . . . . . . . . . . . .	L Near	 0000010C _TEXT	
+  yones  . . . . . . . . . . . .	L Near	 00000118 _TEXT	
+  ytens  . . . . . . . . . . . .	L Near	 0000012C _TEXT	
+  aboutmaps  . . . . . . . . . .	L Near	 0000015A _TEXT	
+paint  . . . . . . . . . . . . .	P Near	 00000382 _TEXT	Length= 0000001C Public STDCALL
+  locat  . . . . . . . . . . . .	Word	 bp + 00000008
+  dfscolor . . . . . . . . . . .	Byte	 bp + 0000000C
+printf . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External C
+scanf  . . . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External C
+wsprintfA  . . . . . . . . . . .	P Near	 00000000 FLAT	Length= 00000000 External C
+
+
+Symbols:
+
+                N a m e                 Type     Value    Attr
+
+@CodeSize  . . . . . . . . . . .	Number	 00000000h   
+@DataSize  . . . . . . . . . . .	Number	 00000000h   
+@Interface . . . . . . . . . . .	Number	 00000003h   
+@Model . . . . . . . . . . . . .	Number	 00000007h   
+@code  . . . . . . . . . . . . .	Text   	 _TEXT
+@data  . . . . . . . . . . . . .	Text   	 FLAT
+@fardata?  . . . . . . . . . . .	Text   	 FLAT
+@fardata . . . . . . . . . . . .	Text   	 FLAT
+@stack . . . . . . . . . . . . .	Text   	 FLAT
+ALT_MASK . . . . . . . . . . . .	Number	 00000003h   
+CAPSLOCK_ON  . . . . . . . . . .	Number	 00000080h   
+CREATE_ALWAYS  . . . . . . . . .	Number	 00000002h   
+CREATE_NEW . . . . . . . . . . .	Number	 00000001h   
+CTRL_MASK  . . . . . . . . . . .	Number	 0000000Ch   
+CreateFile . . . . . . . . . . .	Text   	 CreateFileA
+DO_NOT_SHARE . . . . . . . . . .	Number	 00000000h   
+ENABLE_ECHO_INPUT  . . . . . . .	Number	 00000004h   
+ENABLE_LINE_INPUT  . . . . . . .	Number	 00000002h   
+ENABLE_MOUSE_INPUT . . . . . . .	Number	 00000010h   
+ENABLE_PROCESSED_INPUT . . . . .	Number	 00000001h   
+ENABLE_PROCESSED_OUTPUT  . . . .	Number	 00000001h   
+ENABLE_WINDOW_INPUT  . . . . . .	Number	 00000008h   
+ENABLE_WRAP_AT_EOL_OUTPUT  . . .	Number	 00000002h   
+ENHANCED_KEY . . . . . . . . . .	Number	 00000100h   
+FALSE  . . . . . . . . . . . . .	Number	 00000000h   
+FILE_APPEND_DATA . . . . . . . .	Number	 00000004h   
+FILE_ATTRIBUTE_ARCHIVE . . . . .	Number	 00000020h   
+FILE_ATTRIBUTE_COMPRESSED  . . .	Number	 00000800h   
+FILE_ATTRIBUTE_DEVICE  . . . . .	Number	 00000040h   
+FILE_ATTRIBUTE_DIRECTORY . . . .	Number	 00000010h   
+FILE_ATTRIBUTE_ENCRYPTED . . . .	Number	 00004000h   
+FILE_ATTRIBUTE_HIDDEN  . . . . .	Number	 00000002h   
+FILE_ATTRIBUTE_NORMAL  . . . . .	Number	 00000080h   
+FILE_ATTRIBUTE_NOT_CONTENT_INDEXED .	Number	 00002000h   
+FILE_ATTRIBUTE_OFFLINE . . . . .	Number	 00001000h   
+FILE_ATTRIBUTE_READONLY  . . . .	Number	 00000001h   
+FILE_ATTRIBUTE_REPARSE_POINT . .	Number	 00000400h   
+FILE_ATTRIBUTE_SPARSE_FILE . . .	Number	 00000200h   
+FILE_ATTRIBUTE_SYSTEM  . . . . .	Number	 00000004h   
+FILE_ATTRIBUTE_TEMPORARY . . . .	Number	 00000100h   
+FILE_BEGIN . . . . . . . . . . .	Number	 00000000h   
+FILE_CURRENT . . . . . . . . . .	Number	 00000001h   
+FILE_DELETE_CHILD  . . . . . . .	Number	 00000040h   
+FILE_END . . . . . . . . . . . .	Number	 00000002h   
+FILE_READ_DATA . . . . . . . . .	Number	 00000001h   
+FILE_SHARE_DELETE  . . . . . . .	Number	 00000004h   
+FILE_SHARE_READ  . . . . . . . .	Number	 00000001h   
+FILE_SHARE_WRITE . . . . . . . .	Number	 00000002h   
+FILE_WRITE_DATA  . . . . . . . .	Number	 00000002h   
+FOCUS_EVENT  . . . . . . . . . .	Number	 00000010h   
+FORMAT_MESSAGE_ALLOCATE_BUFFER .	Number	 00000100h   
+FORMAT_MESSAGE_FROM_SYSTEM . . .	Number	 00001000h   
+FormatMessage  . . . . . . . . .	Text   	 FormatMessageA
+GENERIC_ALL  . . . . . . . . . .	Number	 10000000h   
+GENERIC_EXECUTE  . . . . . . . .	Number	 20000000h   
+GENERIC_READ . . . . . . . . . .	Number	 -80000000h   
+GENERIC_WRITE  . . . . . . . . .	Number	 40000000h   
+GetCommandLine . . . . . . . . .	Text   	 GetCommandLineA
+HANDLE . . . . . . . . . . . . .	Text   	 DWORD
+HEAP_GENERATE_EXCEPTIONS . . . .	Number	 00000004h   
+HEAP_GROWABLE  . . . . . . . . .	Number	 00000002h   
+HEAP_NO_SERIALIZE  . . . . . . .	Number	 00000001h   
+HEAP_REALLOC_IN_PLACE_ONLY . . .	Number	 00000010h   
+HEAP_ZERO_MEMORY . . . . . . . .	Number	 00000008h   
+IDABORT  . . . . . . . . . . . .	Number	 00000003h   
+IDCANCEL . . . . . . . . . . . .	Number	 00000002h   
+IDCLOSE  . . . . . . . . . . . .	Number	 00000008h   
+IDCONTINUE . . . . . . . . . . .	Number	 0000000Bh   
+IDHELP . . . . . . . . . . . . .	Number	 00000009h   
+IDIGNORE . . . . . . . . . . . .	Number	 00000005h   
+IDNO . . . . . . . . . . . . . .	Number	 00000007h   
+IDOK . . . . . . . . . . . . . .	Number	 00000001h   
+IDRETRY  . . . . . . . . . . . .	Number	 00000004h   
+IDTIMEOUT  . . . . . . . . . . .	Number	 00007D00h   
+IDTRYAGAIN . . . . . . . . . . .	Number	 0000000Ah   
+IDYES  . . . . . . . . . . . . .	Number	 00000006h   
+INVALID_HANDLE_VALUE . . . . . .	Number	 -00000001h   
+KBDOWN_FLAG  . . . . . . . . . .	Number	 00000001h   
+KEY_EVENT  . . . . . . . . . . .	Number	 00000001h   
+KEY_MASKS  . . . . . . . . . . .	Number	 0000001Fh   
+LEFT_ALT_PRESSED . . . . . . . .	Number	 00000002h   
+LEFT_CTRL_PRESSED  . . . . . . .	Number	 00000008h   
+MB_ABORTRETRYIGNORE  . . . . . .	Number	 00000002h   
+MB_APPLMODAL . . . . . . . . . .	Number	 00000000h   
+MB_CANCELTRYCONTINUE . . . . . .	Number	 00000006h   
+MB_DEFBUTTON1  . . . . . . . . .	Number	 00000000h   
+MB_DEFBUTTON2  . . . . . . . . .	Number	 00000100h   
+MB_DEFBUTTON3  . . . . . . . . .	Number	 00000200h   
+MB_DEFBUTTON4  . . . . . . . . .	Number	 00000300h   
+MB_HELP  . . . . . . . . . . . .	Number	 00004000h   
+MB_ICONASTERISK  . . . . . . . .	Number	 00000040h   
+MB_ICONERROR . . . . . . . . . .	Number	 00000010h   
+MB_ICONEXCLAMATION . . . . . . .	Number	 00000030h   
+MB_ICONHAND  . . . . . . . . . .	Number	 00000010h   
+MB_ICONINFORMATION . . . . . . .	Number	 00000040h   
+MB_ICONQUESTION  . . . . . . . .	Number	 00000020h   
+MB_ICONSTOP  . . . . . . . . . .	Number	 00000010h   
+MB_ICONWARNING . . . . . . . . .	Number	 00000030h   
+MB_OKCANCEL  . . . . . . . . . .	Number	 00000001h   
+MB_OK  . . . . . . . . . . . . .	Number	 00000000h   
+MB_RETRYCANCEL . . . . . . . . .	Number	 00000005h   
+MB_SYSTEMMODAL . . . . . . . . .	Number	 00001000h   
+MB_TASKMODAL . . . . . . . . . .	Number	 00002000h   
+MB_USERICON  . . . . . . . . . .	Number	 00000080h   
+MB_YESNOCANCEL . . . . . . . . .	Number	 00000003h   
+MB_YESNO . . . . . . . . . . . .	Number	 00000004h   
+MENU_EVENT . . . . . . . . . . .	Number	 00000008h   
+MOUSE_EVENT  . . . . . . . . . .	Number	 00000002h   
+MessageBox . . . . . . . . . . .	Text   	 MessageBoxA
+NULL . . . . . . . . . . . . . .	Number	 00000000h   
+NUMLOCK_ON . . . . . . . . . . .	Number	 00000020h   
+OPEN_ALWAYS  . . . . . . . . . .	Number	 00000004h   
+OPEN_EXISTING  . . . . . . . . .	Number	 00000003h   
+PeekConsoleInput . . . . . . . .	Text   	 PeekConsoleInputA
+RIGHT_ALT_PRESSED  . . . . . . .	Number	 00000001h   
+RIGHT_CTRL_PRESSED . . . . . . .	Number	 00000004h   
+ReadConsoleInput . . . . . . . .	Text   	 ReadConsoleInputA
+ReadConsole  . . . . . . . . . .	Text   	 ReadConsoleA
+SCROLLLOCK_ON  . . . . . . . . .	Number	 00000040h   
+SHIFT_MASK . . . . . . . . . . .	Number	 00000010h   
+SHIFT_PRESSED  . . . . . . . . .	Number	 00000010h   
+STD_ERROR_HANDLE . . . . . . . .	Number	 -0000000Ch   
+STD_INPUT_HANDLE . . . . . . . .	Number	 -0000000Ah   
+STD_OUTPUT_HANDLE  . . . . . . .	Number	 -0000000Bh   
+SetConsoleTitle  . . . . . . . .	Text   	 SetConsoleTitleA
+TAB  . . . . . . . . . . . . . .	Number	 00000009h   
+TRUE . . . . . . . . . . . . . .	Number	 00000001h   
+TRUNCATE_EXISTING  . . . . . . .	Number	 00000005h   
+VK_11  . . . . . . . . . . . . .	Number	 000000BDh   
+VK_12  . . . . . . . . . . . . .	Number	 000000BBh   
+VK_ADD . . . . . . . . . . . . .	Number	 0000006Bh   
+VK_BACK  . . . . . . . . . . . .	Number	 00000008h   
+VK_CANCEL  . . . . . . . . . . .	Number	 00000003h   
+VK_CAPITAL . . . . . . . . . . .	Number	 00000014h   
+VK_CLEAR . . . . . . . . . . . .	Number	 0000000Ch   
+VK_CONTROL . . . . . . . . . . .	Number	 00000011h   
+VK_DECIMAL . . . . . . . . . . .	Number	 0000006Eh   
+VK_DELETE  . . . . . . . . . . .	Number	 0000002Eh   
+VK_DIVIDE  . . . . . . . . . . .	Number	 0000006Fh   
+VK_DOWN  . . . . . . . . . . . .	Number	 00000028h   
+VK_END . . . . . . . . . . . . .	Number	 00000023h   
+VK_ESCAPE  . . . . . . . . . . .	Number	 0000001Bh   
+VK_EXECUTE . . . . . . . . . . .	Number	 0000002Bh   
+VK_F10 . . . . . . . . . . . . .	Number	 00000079h   
+VK_F11 . . . . . . . . . . . . .	Number	 0000007Ah   
+VK_F12 . . . . . . . . . . . . .	Number	 0000007Bh   
+VK_F13 . . . . . . . . . . . . .	Number	 0000007Ch   
+VK_F14 . . . . . . . . . . . . .	Number	 0000007Dh   
+VK_F15 . . . . . . . . . . . . .	Number	 0000007Eh   
+VK_F16 . . . . . . . . . . . . .	Number	 0000007Fh   
+VK_F17 . . . . . . . . . . . . .	Number	 00000080h   
+VK_F18 . . . . . . . . . . . . .	Number	 00000081h   
+VK_F19 . . . . . . . . . . . . .	Number	 00000082h   
+VK_F1  . . . . . . . . . . . . .	Number	 00000070h   
+VK_F20 . . . . . . . . . . . . .	Number	 00000083h   
+VK_F21 . . . . . . . . . . . . .	Number	 00000084h   
+VK_F22 . . . . . . . . . . . . .	Number	 00000085h   
+VK_F23 . . . . . . . . . . . . .	Number	 00000086h   
+VK_F24 . . . . . . . . . . . . .	Number	 00000087h   
+VK_F2  . . . . . . . . . . . . .	Number	 00000071h   
+VK_F3  . . . . . . . . . . . . .	Number	 00000072h   
+VK_F4  . . . . . . . . . . . . .	Number	 00000073h   
+VK_F5  . . . . . . . . . . . . .	Number	 00000074h   
+VK_F6  . . . . . . . . . . . . .	Number	 00000075h   
+VK_F7  . . . . . . . . . . . . .	Number	 00000076h   
+VK_F8  . . . . . . . . . . . . .	Number	 00000077h   
+VK_F9  . . . . . . . . . . . . .	Number	 00000078h   
+VK_HELP  . . . . . . . . . . . .	Number	 0000002Fh   
+VK_HOME  . . . . . . . . . . . .	Number	 00000024h   
+VK_INSERT  . . . . . . . . . . .	Number	 0000002Dh   
+VK_LBUTTON . . . . . . . . . . .	Number	 00000001h   
+VK_LCONTROL  . . . . . . . . . .	Number	 000000A2h   
+VK_LEFT  . . . . . . . . . . . .	Number	 00000025h   
+VK_LMENU . . . . . . . . . . . .	Number	 000000A4h   
+VK_LSHIFT  . . . . . . . . . . .	Number	 000000A0h   
+VK_MENU  . . . . . . . . . . . .	Number	 00000012h   
+VK_MULTIPLY  . . . . . . . . . .	Number	 0000006Ah   
+VK_NEXT  . . . . . . . . . . . .	Number	 00000022h   
+VK_NUMLOCK . . . . . . . . . . .	Number	 00000090h   
+VK_NUMPAD0 . . . . . . . . . . .	Number	 00000060h   
+VK_NUMPAD1 . . . . . . . . . . .	Number	 00000061h   
+VK_NUMPAD2 . . . . . . . . . . .	Number	 00000062h   
+VK_NUMPAD3 . . . . . . . . . . .	Number	 00000063h   
+VK_NUMPAD4 . . . . . . . . . . .	Number	 00000064h   
+VK_NUMPAD5 . . . . . . . . . . .	Number	 00000065h   
+VK_NUMPAD6 . . . . . . . . . . .	Number	 00000066h   
+VK_NUMPAD7 . . . . . . . . . . .	Number	 00000067h   
+VK_NUMPAD8 . . . . . . . . . . .	Number	 00000068h   
+VK_NUMPAD9 . . . . . . . . . . .	Number	 00000069h   
+VK_PAUSE . . . . . . . . . . . .	Number	 00000013h   
+VK_PRINT . . . . . . . . . . . .	Number	 0000002Ah   
+VK_PRIOR . . . . . . . . . . . .	Number	 00000021h   
+VK_RBUTTON . . . . . . . . . . .	Number	 00000002h   
+VK_RCONTROL  . . . . . . . . . .	Number	 000000A3h   
+VK_RETURN  . . . . . . . . . . .	Number	 0000000Dh   
+VK_RIGHT . . . . . . . . . . . .	Number	 00000027h   
+VK_RMENU . . . . . . . . . . . .	Number	 000000A5h   
+VK_RSHIFT  . . . . . . . . . . .	Number	 000000A1h   
+VK_SCROLL  . . . . . . . . . . .	Number	 00000091h   
+VK_SEPARATER . . . . . . . . . .	Number	 0000006Ch   
+VK_SHIFT . . . . . . . . . . . .	Number	 00000010h   
+VK_SNAPSHOT  . . . . . . . . . .	Number	 0000002Ch   
+VK_SPACE . . . . . . . . . . . .	Number	 00000020h   
+VK_SUBTRACT  . . . . . . . . . .	Number	 0000006Dh   
+VK_TAB . . . . . . . . . . . . .	Number	 00000009h   
+VK_UP  . . . . . . . . . . . . .	Number	 00000026h   
+WINDOW_BUFFER_SIZE_EVENT . . . .	Number	 00000004h   
+WriteConsoleOutputCharacter  . .	Text   	 WriteConsoleOutputCharacterA
+WriteConsole . . . . . . . . . .	Text   	 WriteConsoleA
+black  . . . . . . . . . . . . .	Number	 00000000h   
+blue . . . . . . . . . . . . . .	Number	 00000001h   
+brown  . . . . . . . . . . . . .	Number	 00000006h   
+bytecount  . . . . . . . . . . .	DWord	 00000AE9 _DATA	
+byteswritten . . . . . . . . . .	DWord	 00000AED _DATA	
+color  . . . . . . . . . . . . .	Byte	 000000AD _DATA	
+cyan . . . . . . . . . . . . . .	Number	 00000003h   
+exit . . . . . . . . . . . . . .	Text   	 INVOKE ExitProcess,0
+filehandle . . . . . . . . . . .	DWord	 000000AE _DATA	
+firstrow . . . . . . . . . . . .	Byte	 000000B2 _DATA	
+frbufsize  . . . . . . . . . . .	DWord	 000000B9 _DATA	
+gray . . . . . . . . . . . . . .	Number	 00000008h   
+green  . . . . . . . . . . . . .	Number	 00000002h   
+input  . . . . . . . . . . . . .	Byte	 00000000 _DATA	
+intx . . . . . . . . . . . . . .	Byte	 00000AF1 _DATA	
+inty . . . . . . . . . . . . . .	Byte	 00000AF2 _DATA	
+lightBlue  . . . . . . . . . . .	Number	 00000009h   
+lightCyan  . . . . . . . . . . .	Number	 0000000Bh   
+lightGray  . . . . . . . . . . .	Number	 00000007h   
+lightGreen . . . . . . . . . . .	Number	 0000000Ah   
+lightMagenta . . . . . . . . . .	Number	 0000000Dh   
+lightRed . . . . . . . . . . . .	Number	 0000000Ch   
+magenta  . . . . . . . . . . . .	Number	 00000005h   
+mapbufsize . . . . . . . . . . .	DWord	 00000AE5 _DATA	
+mapsbuffer . . . . . . . . . . .	Byte	 000000BD _DATA	
+output . . . . . . . . . . . . .	Byte	 00000095 _DATA	
+red  . . . . . . . . . . . . . .	Number	 00000004h   
+source . . . . . . . . . . . . .	Byte	 00000081 _DATA	
+visitedmap . . . . . . . . . . .	Byte	 00000AF6 _DATA	
+white  . . . . . . . . . . . . .	Number	 0000000Fh   
+wsprintf . . . . . . . . . . . .	Text   	 wsprintfA
+xval . . . . . . . . . . . . . .	Byte	 000000A9 _DATA	
+xyloc  . . . . . . . . . . . . .	Word	 00000AF3 _DATA	
+xyoric . . . . . . . . . . . . .	Byte	 00000AF5 _DATA	
+yellow . . . . . . . . . . . . .	Number	 0000000Eh   
+yval . . . . . . . . . . . . . .	Byte	 000000AB _DATA	
+
+	   0 Warnings
+	   0 Errors
