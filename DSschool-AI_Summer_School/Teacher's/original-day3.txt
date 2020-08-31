@@ -1,0 +1,10 @@
+[상현] [오후 5:43] * Decision Tree PDF - http://bit.ly/dsschool-decision-tree
+* Bike-sharing-demand PDF - http://bit.ly/dsschool-bike-pdf
+
+* 06-bike-sharing-demand-0.43019.ipynb - http://bit.ly/dsschool-06-bike-ipynb
+* 06-bike-sharing-demand-0.43019.html - http://bit.ly/dsschool-06-bike-html
+
+* 07-bike-sharing-demand-0.39138.ipynb - http://bit.ly/dsschool-07-bike-ipynb
+* 07-bike-sharing-demand-0.39138.html - http://bit.ly/dsschool-07-bike-html
+
+* 04-01_baseline-script_0.38474(solution).ipynb http://bit.ly/dsschool...

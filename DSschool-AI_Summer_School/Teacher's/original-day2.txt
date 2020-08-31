@@ -1,0 +1,11 @@
+[상현] [오후 5:42] * Decision Tree PDF - http://bit.ly/dsschool-decision-tree
+* Bike-sharing-demand PDF - http://bit.ly/dsschool-bike-pdf
+
+* 02-python-for-beginners.ipynb - http://bit.ly/dsschool-02-python-ipynb
+* 02-python-for-beginners.html - http://bit.ly/dsschool-02-python-html
+
+* 03-pandas-for-beginners.ipynb - http://bit.ly/dsschool-03-pandas-ipynb
+* 03-pandas-for-beginners.html - http://bit.ly/dsschool-03-pandas-html
+
+* 04-titanic-solution-0.81818.ipynb - http://bit.ly/dsschool-04-titanic-ipynb
+* 04-titanic...

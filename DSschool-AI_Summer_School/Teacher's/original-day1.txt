@@ -1,0 +1,10 @@
+[상현] [오후 5:39] 설문조사에 응해주셔서 감사드립니다. 이번 1일차 수업 자료는 다음의 링크에서 다운받으실 수 있습니다. 링크를 클릭하시면 화면이 넘어가기 때문에 링크를 복사하며 메모해두시는 것을 권장드립니다.
+
+* 01-titanic-solution-0.78947.ipynb - http://bit.ly/dsschool-01-titanic-ipynb
+* 01-titanic-solution-0.78947.html - http://bit.ly/dsschool-01-titanic-html
+
+* 02-python-for-beginners.ipynb - http://bit.ly/dsschool-02-python-ipynb
+* 02-python-for-beginners.html - http://bit.ly/dsschool-02-python-html
+
+* 03-pandas-for-beginners.ipynb - http://bit.ly/dsschool-03-pandas-ipynb
+* 03-pandas-for-beg...
